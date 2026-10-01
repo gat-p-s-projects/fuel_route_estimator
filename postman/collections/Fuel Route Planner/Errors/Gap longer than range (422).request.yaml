@@ -1,0 +1,20 @@
+$kind: http-request
+description: The route crosses Canada, where there is no station data, leaving a gap over 2,000 miles.
+url: "{{baseUrl}}/api/trip/"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "start": "Seattle, WA",
+      "finish": "Anchorage, AK"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status 422", () => pm.response.to.have.status(422));
+      pm.test("Names the gap", () => pm.expect(pm.response.json().detail).to.include("gap exceeds"));
+    language: text/javascript
+order: 6000

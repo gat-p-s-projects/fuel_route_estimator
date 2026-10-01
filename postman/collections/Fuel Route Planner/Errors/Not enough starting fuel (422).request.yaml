@@ -1,0 +1,21 @@
+$kind: http-request
+description: Starts in Big Bend with an empty tank; the nearest station is 210 miles away.
+url: "{{baseUrl}}/api/trip/"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "start": "29.25,-103.25",
+      "finish": "El Paso, TX",
+      "start_fuel_percent": 0
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status 422", () => pm.response.to.have.status(422));
+      pm.test("Suggests raising start_fuel_percent", () => pm.expect(pm.response.json().detail).to.include("start_fuel_percent"));
+    language: text/javascript
+order: 5000

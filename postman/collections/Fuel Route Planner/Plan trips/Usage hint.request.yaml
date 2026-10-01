@@ -1,0 +1,13 @@
+$kind: http-request
+description: GET returns an example request body.
+url: "{{baseUrl}}/api/trip/"
+method: GET
+headers:
+  Accept: application/json
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status 200", () => pm.response.to.have.status(200));
+      pm.test("Returns an example body", () => pm.expect(pm.response.json()).to.have.property("example"));
+    language: text/javascript
+order: 7000

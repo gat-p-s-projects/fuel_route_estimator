@@ -1,0 +1,435 @@
+{
+  "info": {
+    "name": "Fuel Route Planner",
+    "description": "Plans the cheapest fuel stops for a US road trip (500 mi range, 10 mpg).\n\nStart the server with `python manage.py runserver`, then run the folders in order. `baseUrl` defaults to http://127.0.0.1:8000.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:8000" },
+    { "key": "mapUrl", "value": "" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test(\"Responds in under 15 s\", () => pm.expect(pm.response.responseTime).to.be.below(15000));"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Plan trips",
+      "item": [
+        {
+          "name": "New York to Los Angeles (20% fuel)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const trip = pm.response.json();",
+                  "",
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test(\"Stops are never more than 500 miles apart\", () => {",
+                  "    const miles = [0, ...trip.fuel_stops.map(s => s.route_mile), trip.distance_miles];",
+                  "    miles.slice(1).forEach((mile, i) => pm.expect(mile - miles[i]).to.be.at.most(500));",
+                  "});",
+                  "",
+                  "pm.test(\"Total cost equals the sum of stop costs\", () => {",
+                  "    const sum = trip.fuel_stops.reduce((total, s) => total + s.cost, 0);",
+                  "    pm.expect(trip.total_fuel_cost).to.be.closeTo(sum, 0.05);",
+                  "});",
+                  "",
+                  "pm.test(\"Route is a GeoJSON LineString\", () => pm.expect(trip.route.type).to.eql(\"LineString\"));",
+                  "",
+                  "pm.collectionVariables.set(\"mapUrl\", trip.map_url);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"New York, NY\",\n  \"finish\": \"Los Angeles, CA\",\n  \"start_fuel_percent\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trip/",
+            "description": "Cross-country trip. The first call takes a few seconds (one OSRM routing call); the response's `map_url` is saved for the Map folder."
+          }
+        },
+        {
+          "name": "Same trip again (cached)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Served from cache in under 500 ms\", () => pm.expect(pm.response.responseTime).to.be.below(500));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"New York, NY\",\n  \"finish\": \"Los Angeles, CA\",\n  \"start_fuel_percent\": 20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trip/",
+            "description": "Identical request; answered from cache without calling any external API."
+          }
+        },
+        {
+          "name": "Chicago to Denver (default full tank)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const trip = pm.response.json();",
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"start_fuel_percent defaults to 100\", () => {",
+                  "    pm.expect(trip.start_fuel_percent).to.eql(100);",
+                  "    pm.expect(trip.start_fuel_gallons).to.eql(50);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Chicago, IL\",\n  \"finish\": \"Denver, CO\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trip/",
+            "description": "`start_fuel_percent` omitted, so the trip starts with a full 50 gallon tank."
+          }
+        },
+        {
+          "name": "Chicago to Denver (10% fuel)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const trip = pm.response.json();",
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Starts with 5 gallons\", () => pm.expect(trip.start_fuel_gallons).to.eql(5));",
+                  "pm.test(\"Needs at least one fuel stop\", () => pm.expect(trip.fuel_stops.length).to.be.above(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Chicago, IL\",\n  \"finish\": \"Denver, CO\",\n  \"start_fuel_percent\": 10\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trip/",
+            "description": "Same trip with a nearly empty tank; compare the stops and total cost with the full-tank request."
+          }
+        },
+        {
+          "name": "Coordinates as input",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Start label echoes the coordinates\", () => pm.expect(pm.response.json().start.label).to.eql(\"32.7767, -96.797\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"32.7767,-96.797\",\n  \"finish\": \"Houston, TX\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trip/",
+            "description": "`\"lat,lon\"` input is parsed locally, no geocoding call."
+          }
+        },
+        {
+          "name": "Street address as input",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Short trip needs no fuel stops on a full tank\", () => pm.expect(pm.response.json().fuel_stops).to.be.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"1600 Pennsylvania Ave NW, Washington, DC\",\n  \"finish\": \"Baltimore, MD\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trip/",
+            "description": "Street addresses fall back to Nominatim geocoding (one extra external call)."
+          }
+        },
+        {
+          "name": "Usage hint",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Returns an example body\", () => pm.expect(pm.response.json()).to.have.property(\"example\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/trip/",
+            "description": "GET returns an example request body."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Errors",
+      "item": [
+        {
+          "name": "Missing finish (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Names the missing field\", () => pm.expect(pm.response.json()).to.have.property(\"finish\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Boston, MA\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trip/"
+          }
+        },
+        {
+          "name": "Fuel percent out of range (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Names the invalid field\", () => pm.expect(pm.response.json()).to.have.property(\"start_fuel_percent\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Boston, MA\",\n  \"finish\": \"Albany, NY\",\n  \"start_fuel_percent\": 150\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trip/"
+          }
+        },
+        {
+          "name": "Location outside the USA (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Explains the problem\", () => pm.expect(pm.response.json().detail).to.include(\"outside the USA\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"51.5,-0.12\",\n  \"finish\": \"Albany, NY\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trip/"
+          }
+        },
+        {
+          "name": "Unknown location (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Explains the problem\", () => pm.expect(pm.response.json().detail).to.include(\"Could not find\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Qwxzv Plmkj, TX\",\n  \"finish\": \"Dallas, TX\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trip/"
+          }
+        },
+        {
+          "name": "Not enough starting fuel (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"Suggests raising start_fuel_percent\", () => pm.expect(pm.response.json().detail).to.include(\"start_fuel_percent\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"29.25,-103.25\",\n  \"finish\": \"El Paso, TX\",\n  \"start_fuel_percent\": 0\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trip/",
+            "description": "Starts in Big Bend with an empty tank; the nearest station is 210 miles away."
+          }
+        },
+        {
+          "name": "Gap longer than range (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"Names the gap\", () => pm.expect(pm.response.json().detail).to.include(\"gap exceeds\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Seattle, WA\",\n  \"finish\": \"Anchorage, AK\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trip/",
+            "description": "The route crosses Canada, where there is no station data, leaving a gap over 2,000 miles."
+          }
+        },
+        {
+          "name": "No drivable route (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"Explains the problem\", () => pm.expect(pm.response.json().detail).to.include(\"No drivable route\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Honolulu, HI\",\n  \"finish\": \"Los Angeles, CA\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trip/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Map",
+      "item": [
+        {
+          "name": "Map page for the first trip",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Renders the trip\", () => pm.expect(pm.response.text()).to.include(\"Total fuel cost\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{mapUrl}}",
+            "description": "Uses the `map_url` saved by the first request. Postman shows HTML; open the URL in a browser to see the interactive map."
+          }
+        }
+      ]
+    }
+  ]
+}

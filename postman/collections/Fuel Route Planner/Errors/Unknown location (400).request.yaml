@@ -1,0 +1,19 @@
+$kind: http-request
+url: "{{baseUrl}}/api/trip/"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "start": "Qwxzv Plmkj, TX",
+      "finish": "Dallas, TX"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status 400", () => pm.response.to.have.status(400));
+      pm.test("Explains the problem", () => pm.expect(pm.response.json().detail).to.include("Could not find"));
+    language: text/javascript
+order: 4000

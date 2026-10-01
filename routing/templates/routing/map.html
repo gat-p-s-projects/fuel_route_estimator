@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fuel Route Planner</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, sans-serif; color: #1f2933; display: flex; height: 100vh; }
+    aside { width: 380px; overflow-y: auto; padding: 20px; border-right: 1px solid #e4e7eb; }
+    #map { flex: 1; }
+    h1 { font-size: 20px; margin: 0 0 16px; }
+    form { display: grid; gap: 8px; margin-bottom: 16px; }
+    label { font-size: 13px; color: #52606d; }
+    input { width: 100%; padding: 8px; border: 1px solid #cbd2d9; border-radius: 6px; font-size: 14px; }
+    button { padding: 10px; border: 0; border-radius: 6px; background: #2563eb; color: #fff; font-size: 14px; cursor: pointer; }
+    .error { background: #fde8e8; color: #9b1c1c; padding: 10px; border-radius: 6px; }
+    .summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+    .metric { background: #f5f7fa; padding: 10px; border-radius: 6px; }
+    .metric b { display: block; font-size: 18px; }
+    .metric span { font-size: 12px; color: #52606d; }
+    ol { padding-left: 20px; margin: 0; }
+    li { margin-bottom: 10px; font-size: 14px; }
+    li small { color: #52606d; display: block; }
+    .stop-marker { background: #2563eb; color: #fff; border-radius: 50%; width: 24px; height: 24px; line-height: 24px; text-align: center; font-weight: 600; font-size: 12px; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    @media (max-width: 720px) {
+      body { flex-direction: column; height: auto; }
+      aside { width: 100%; border-right: 0; }
+      #map { height: 60vh; flex: none; }
+    }
+  </style>
+</head>
+<body>
+  <aside>
+    <h1>Fuel Route Planner</h1>
+    <form method="get">
+      <label for="start">Start</label>
+      <input id="start" name="start" value="{{ values.start|default:'' }}" placeholder="New York, NY" required>
+      <label for="finish">Finish</label>
+      <input id="finish" name="finish" value="{{ values.finish|default:'' }}" placeholder="Los Angeles, CA" required>
+      <label for="start_fuel_percent">Starting fuel (%)</label>
+      <input id="start_fuel_percent" name="start_fuel_percent" type="number" min="0" max="100" step="any" value="{{ values.start_fuel_percent }}">
+      <button type="submit">Plan route</button>
+    </form>
+
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+    {% if plan %}
+      <div class="summary">
+        <div class="metric"><b>${{ plan.total_fuel_cost|floatformat:2 }}</b><span>Total fuel cost</span></div>
+        <div class="metric"><b>{{ plan.distance_miles|floatformat:0 }} mi</b><span>Distance</span></div>
+        <div class="metric"><b>{{ plan.total_gallons_purchased|floatformat:1 }} gal</b><span>Fuel purchased</span></div>
+        <div class="metric"><b>{{ plan.duration_hours|floatformat:1 }} h</b><span>Driving time</span></div>
+      </div>
+      <ol>
+        {% for stop in plan.fuel_stops %}
+          <li>
+            <strong>{{ stop.name }}</strong> &mdash; ${{ stop.price_per_gallon|floatformat:3 }}/gal
+            <small>{{ stop.address }}, {{ stop.city }}, {{ stop.state }}</small>
+            <small>Mile {{ stop.route_mile|floatformat:0 }} &middot; {{ stop.gallons|floatformat:1 }} gal &middot; ${{ stop.cost|floatformat:2 }}</small>
+          </li>
+        {% empty %}
+          <li>No fuel stops needed with the starting fuel.</li>
+        {% endfor %}
+      </ol>
+    {% endif %}
+  </aside>
+  <div id="map"></div>
+
+  {{ plan|json_script:"trip-plan" }}
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script>
+    const map = L.map("map").setView([39.5, -98.35], 4);
+    // OSM refuses tile requests without a Referer; Django's default same-origin policy strips it
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      referrerPolicy: "strict-origin-when-cross-origin",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
+
+    const escapeHtml = (text) => String(text).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+    const plan = JSON.parse(document.getElementById("trip-plan").textContent);
+    if (plan) {
+      const routeLine = L.polyline(plan.route.coordinates.map(([lon, lat]) => [lat, lon]), { color: "#2563eb", weight: 4 }).addTo(map);
+      L.marker([plan.start.latitude, plan.start.longitude]).addTo(map).bindPopup(`Start: ${escapeHtml(plan.start.label)}`);
+      L.marker([plan.finish.latitude, plan.finish.longitude]).addTo(map).bindPopup(`Finish: ${escapeHtml(plan.finish.label)}`);
+      plan.fuel_stops.forEach((stop, index) => {
+        const icon = L.divIcon({ className: "", html: `<div class="stop-marker">${index + 1}</div>`, iconSize: [24, 24] });
+        L.marker([stop.latitude, stop.longitude], { icon }).addTo(map).bindPopup(
+          `<b>${escapeHtml(stop.name)}</b><br>$${stop.price_per_gallon.toFixed(3)}/gal<br>${stop.gallons.toFixed(1)} gal &middot; $${stop.cost.toFixed(2)}`
+        );
+      });
+      map.fitBounds(routeLine.getBounds(), { padding: [30, 30] });
+    }
+  </script>
+</body>
+</html>

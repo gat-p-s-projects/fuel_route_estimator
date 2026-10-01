@@ -1,0 +1,20 @@
+$kind: http-request
+url: "{{baseUrl}}/api/trip/"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "start": "Boston, MA",
+      "finish": "Albany, NY",
+      "start_fuel_percent": 150
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status 400", () => pm.response.to.have.status(400));
+      pm.test("Names the invalid field", () => pm.expect(pm.response.json()).to.have.property("start_fuel_percent"));
+    language: text/javascript
+order: 2000

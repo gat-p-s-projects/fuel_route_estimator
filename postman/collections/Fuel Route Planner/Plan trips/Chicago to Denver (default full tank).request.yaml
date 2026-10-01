@@ -1,0 +1,24 @@
+$kind: http-request
+description: "`start_fuel_percent` omitted, so the trip starts with a full 50 gallon tank."
+url: "{{baseUrl}}/api/trip/"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "start": "Chicago, IL",
+      "finish": "Denver, CO"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      const trip = pm.response.json();
+      pm.test("Status 200", () => pm.response.to.have.status(200));
+      pm.test("start_fuel_percent defaults to 100", () => {
+          pm.expect(trip.start_fuel_percent).to.eql(100);
+          pm.expect(trip.start_fuel_gallons).to.eql(50);
+      });
+    language: text/javascript
+order: 3000

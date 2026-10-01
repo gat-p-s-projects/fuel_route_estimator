@@ -1,0 +1,36 @@
+$kind: http-request
+description: Cross-country trip. The first call takes a few seconds (one OSRM routing call); the response's `map_url` is saved for the Map folder.
+url: "{{baseUrl}}/api/trip/"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "start": "New York, NY",
+      "finish": "Los Angeles, CA",
+      "start_fuel_percent": 20
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      const trip = pm.response.json();
+
+      pm.test("Status 200", () => pm.response.to.have.status(200));
+
+      pm.test("Stops are never more than 500 miles apart", () => {
+          const miles = [0, ...trip.fuel_stops.map(s => s.route_mile), trip.distance_miles];
+          miles.slice(1).forEach((mile, i) => pm.expect(mile - miles[i]).to.be.at.most(500));
+      });
+
+      pm.test("Total cost equals the sum of stop costs", () => {
+          const sum = trip.fuel_stops.reduce((total, s) => total + s.cost, 0);
+          pm.expect(trip.total_fuel_cost).to.be.closeTo(sum, 0.05);
+      });
+
+      pm.test("Route is a GeoJSON LineString", () => pm.expect(trip.route.type).to.eql("LineString"));
+
+      pm.collectionVariables.set("mapUrl", trip.map_url);
+    language: text/javascript
+order: 1000

@@ -1,0 +1,12 @@
+$kind: collection
+description: |-
+  Plans the cheapest fuel stops for a US road trip (500 mi range, 10 mpg).
+
+  Start the server with `python manage.py runserver`, then run the folders in order. `baseUrl` defaults to http://127.0.0.1:8000.
+variables:
+  baseUrl: http://127.0.0.1:8000
+  mapUrl: ""
+scripts:
+  - type: http:afterResponse
+    code: pm.test("Responds in under 15 s", () => pm.expect(pm.response.responseTime).to.be.below(15000));
+    language: text/javascript

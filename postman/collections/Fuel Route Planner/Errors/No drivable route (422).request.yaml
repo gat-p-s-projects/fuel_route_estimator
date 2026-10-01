@@ -1,0 +1,19 @@
+$kind: http-request
+url: "{{baseUrl}}/api/trip/"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "start": "Honolulu, HI",
+      "finish": "Los Angeles, CA"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status 422", () => pm.response.to.have.status(422));
+      pm.test("Explains the problem", () => pm.expect(pm.response.json().detail).to.include("No drivable route"));
+    language: text/javascript
+order: 7000
